@@ -9,6 +9,7 @@
         body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', sans-serif; height: 100vh; overflow: hidden; }
         .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
         .tab-active { border-bottom: 2px solid #3b82f6; color: #3b82f6; }
+        .chat-mode-active { background-color: #3b82f6 !important; color: white !important; }
         .hidden { display: none; }
         #game-preview-container:fullscreen { background: #000; width: 100vw; height: 100vh; }
         pre { scrollbar-width: thin; scrollbar-color: #475569 #0f172a; }
@@ -19,7 +20,10 @@
 <body class="flex flex-col">
     <!-- Header -->
     <header class="p-4 glass flex justify-between items-center shrink-0">
-        <h1 class="text-xl font-bold text-blue-400">AI Game Studio <span class="text-[10px] bg-blue-500/20 px-2 py-0.5 rounded text-blue-300">CLOUD</span></h1>
+        <h1 class="text-xl font-bold text-blue-400 flex items-center gap-2">
+            AI Game Studio 
+            <span class="text-[10px] bg-blue-500/20 px-2 py-0.5 rounded text-blue-300">v2.0 CLOUD</span>
+        </h1>
         <div class="text-[10px] text-slate-500 text-right leading-tight">
             SYSTEM: i5-5300U | 8GB RAM<br>STATUS: <span id="auth-status">CONNECTING...</span>
         </div>
@@ -27,24 +31,34 @@
 
     <!-- Tabs Navigation -->
     <nav class="flex border-b border-slate-700 glass shrink-0">
-        <button onclick="switchTab('chat')" id="tab-chat" class="flex-1 py-3 text-sm font-medium transition-all tab-active">1. ЧАТ</button>
-        <button onclick="switchTab('code')" id="tab-code" class="flex-1 py-3 text-sm font-medium transition-all">2. КОД</button>
-        <button onclick="switchTab('preview')" id="tab-preview" class="flex-1 py-3 text-sm font-medium transition-all text-green-400">3. ПРЕВЬЮ</button>
+        <button onclick="switchTab('chat')" id="tab-chat" class="flex-1 py-3 text-sm font-medium transition-all tab-active uppercase tracking-wider">1. Чат</button>
+        <button onclick="switchTab('code')" id="tab-code" class="flex-1 py-3 text-sm font-medium transition-all uppercase tracking-wider">2. Код</button>
+        <button onclick="switchTab('preview')" id="tab-preview" class="flex-1 py-3 text-sm font-medium transition-all text-green-400 uppercase tracking-wider">3. Превью</button>
     </nav>
 
     <!-- Main Content Area -->
     <main class="flex-grow relative overflow-hidden">
         
         <!-- Tab 1: Chat -->
-        <div id="content-chat" class="h-full flex flex-col p-4 space-y-4">
-            <div id="chat-messages" class="flex-grow overflow-y-auto space-y-4 pr-2">
-                <!-- Сообщения загрузятся из БД -->
+        <div id="content-chat" class="h-full flex flex-col">
+            <!-- Mode Switcher -->
+            <div class="flex p-2 gap-2 bg-slate-900/50 border-b border-slate-800">
+                <button onclick="setChatMode('talk')" id="mode-talk" class="flex-1 py-1.5 text-xs rounded-md bg-slate-800 text-slate-400 transition-all chat-mode-active">ОБЩЕНИЕ (Идеи/Ошибки)</button>
+                <button onclick="setChatMode('code')" id="mode-code" class="flex-1 py-1.5 text-xs rounded-md bg-slate-800 text-slate-400 transition-all">КОДИНГ (Правка игры)</button>
             </div>
-            <div class="glass p-2 rounded-xl flex gap-2">
-                <input id="prompt-input" type="text" class="bg-transparent flex-grow p-2 outline-none text-sm" placeholder="Введите ваш запрос, сэр...">
-                <button onclick="generateGame()" id="send-btn" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-bold transition-all disabled:opacity-50">
-                    Отправить
-                </button>
+
+            <div id="chat-messages" class="flex-grow overflow-y-auto p-4 space-y-4">
+                <!-- Сообщения -->
+            </div>
+
+            <div class="p-4 glass border-t border-slate-800">
+                <div class="flex gap-2">
+                    <input id="prompt-input" type="text" class="bg-slate-900 border border-slate-700 flex-grow p-3 rounded-xl outline-none text-sm focus:border-blue-500 transition-all" placeholder="Ваш запрос, сэр...">
+                    <button onclick="handleAction()" id="send-btn" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-50">
+                        Отправить
+                    </button>
+                </div>
+                <div id="status-line" class="text-[10px] text-slate-500 mt-2 ml-1 italic">ИИ готов к общению...</div>
             </div>
         </div>
 
@@ -61,7 +75,7 @@
         <div id="content-preview" class="h-full hidden flex flex-col p-4">
             <div id="game-preview-container" class="relative flex-grow glass rounded-2xl overflow-hidden bg-black flex items-center justify-center">
                 <div id="placeholder" class="text-slate-700 text-center">
-                    <p>Ожидание кода из облака...</p>
+                    <p>Сэр, игра еще не была скомпилирована.</p>
                 </div>
                 <iframe id="game-frame" class="w-full h-full hidden border-none"></iframe>
                 <button onclick="toggleFullScreen()" class="absolute bottom-4 right-4 bg-black/50 p-2 rounded hover:bg-black/80">
@@ -75,7 +89,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyARZvFpMMn5t8pg5gb2bWA6OrZC1L8DBSA",
@@ -87,17 +101,17 @@
         };
 
         const geminiKey = "AIzaSyDdZxB-O_16W5uAbXMQ6lAtKGj3TUmS-nM";
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'game-studio-v1';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'game-studio-v2';
 
-        // Init Firebase
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
         
         let user = null;
         let currentCode = "";
+        let chatMode = 'talk'; // 'talk' or 'code'
 
-        // UI Helpers
+        // Global UI Functions
         window.switchTab = (tab) => {
             ['chat', 'code', 'preview'].forEach(t => {
                 document.getElementById(`content-${t}`).classList.add('hidden');
@@ -107,131 +121,128 @@
             document.getElementById(`tab-${tab}`).classList.add('tab-active');
         };
 
-        const addMessageUI = (text, isUser = false) => {
+        window.setChatMode = (mode) => {
+            chatMode = mode;
+            document.getElementById('mode-talk').classList.toggle('chat-mode-active', mode === 'talk');
+            document.getElementById('mode-code').classList.toggle('chat-mode-active', mode === 'code');
+            document.getElementById('status-line').innerText = mode === 'talk' ? "Режим обсуждения: код не меняется." : "Режим кодинга: ИИ обновит игру.";
+        };
+
+        const addMessageUI = (text, isUser = false, isSystem = false) => {
             const chat = document.getElementById('chat-messages');
             const msg = document.createElement('div');
-            msg.className = isUser ? "ml-auto bg-blue-600 p-3 rounded-lg max-w-[80%] text-sm" : "bg-slate-800 p-3 rounded-lg max-w-[80%] text-sm";
-            msg.innerText = text;
+            
+            if (isSystem) {
+                msg.className = "text-center text-[10px] text-slate-500 uppercase tracking-widest my-2";
+                msg.innerText = text;
+            } else {
+                msg.className = isUser ? "ml-auto bg-blue-600 p-3 rounded-2xl rounded-tr-none max-w-[85%] text-sm shadow-lg" : "bg-slate-800 p-3 rounded-2xl rounded-tl-none max-w-[85%] text-sm shadow-lg border border-slate-700";
+                msg.innerHTML = text.replace(/\n/g, '<br>');
+            }
+            
             chat.appendChild(msg);
             chat.scrollTop = chat.scrollHeight;
         };
 
-        // Auth Flow
+        // Auth & Sync
         const initAuth = async () => {
             try {
                 await signInAnonymously(auth);
                 document.getElementById('auth-status').innerText = "ONLINE";
                 document.getElementById('auth-status').classList.add('text-green-400');
             } catch (err) {
-                console.error(err);
                 document.getElementById('auth-status').innerText = "OFFLINE";
             }
         };
 
         onAuthStateChanged(auth, (u) => {
             user = u;
-            if (user) {
-                setupSync();
-            }
+            if (user) setupSync();
         });
 
-        // Firestore Sync
         const setupSync = () => {
-            // Sync Messages
             const msgRef = doc(db, 'artifacts', appId, 'users', user.uid, 'history', 'messages');
-            onSnapshot(msgRef, (docSnap) => {
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    const chatBox = document.getElementById('chat-messages');
-                    chatBox.innerHTML = "";
-                    data.list.forEach(m => addMessageUI(m.text, m.isUser));
+            onSnapshot(msgRef, (snap) => {
+                if (snap.exists()) {
+                    document.getElementById('chat-messages').innerHTML = "";
+                    snap.data().list.forEach(m => addMessageUI(m.text, m.isUser, m.isSystem));
                 } else {
-                    addMessageUI("Приветствую, сэр. Что мы создадим сегодня?");
+                    addMessageUI("Система готова, сэр. О чем поговорим?", false, true);
                 }
-            }, (err) => console.error("Msg sync error", err));
+            });
 
-            // Sync Code
             const codeRef = doc(db, 'artifacts', appId, 'users', user.uid, 'project', 'current');
-            onSnapshot(codeRef, (docSnap) => {
-                if (docSnap.exists()) {
-                    currentCode = docSnap.data().code;
+            onSnapshot(codeRef, (snap) => {
+                if (snap.exists()) {
+                    currentCode = snap.data().code;
                     document.getElementById('code-display').textContent = currentCode;
-                    updatePreview(currentCode);
+                    const frame = document.getElementById('game-frame');
+                    const blob = new Blob([currentCode], { type: 'text/html' });
+                    frame.src = URL.createObjectURL(blob);
+                    frame.classList.remove('hidden');
+                    document.getElementById('placeholder').classList.add('hidden');
                 }
-            }, (err) => console.error("Code sync error", err));
+            });
         };
 
-        const saveToCloud = async (text, isUser, code = null) => {
-            if (!user) return;
-            
-            // Save Message
+        const saveToCloud = async (text, isUser, code = null, isSystem = false) => {
             const msgRef = doc(db, 'artifacts', appId, 'users', user.uid, 'history', 'messages');
             const snap = await getDoc(msgRef);
             let list = snap.exists() ? snap.data().list : [];
-            list.push({ text, isUser, time: Date.now() });
+            list.push({ text, isUser, isSystem, time: Date.now() });
             await setDoc(msgRef, { list });
-
-            // Save Code if exists
             if (code) {
                 const codeRef = doc(db, 'artifacts', appId, 'users', user.uid, 'project', 'current');
                 await setDoc(codeRef, { code, updatedAt: serverTimestamp() });
             }
         };
 
-        const updatePreview = (code) => {
-            const frame = document.getElementById('game-frame');
-            const placeholder = document.getElementById('placeholder');
-            if (!code) return;
-            const blob = new Blob([code], { type: 'text/html' });
-            frame.src = URL.createObjectURL(blob);
-            frame.classList.remove('hidden');
-            placeholder.classList.add('hidden');
-        };
-
-        // API Call
-        window.generateGame = async () => {
+        // Main Logic
+        window.handleAction = async () => {
             const input = document.getElementById('prompt-input');
             const prompt = input.value;
             if (!prompt || !user) return;
 
             input.value = "";
-            await saveToCloud(prompt, true);
-            addMessageUI("Разрабатываю игру, сэр...", false);
+            await saveToCloud(`${chatMode === 'talk' ? '[ОБСУЖДЕНИЕ]' : '[КОДИНГ]'} ${prompt}`, true);
 
-            const systemPrompt = "Expert Game Dev. Write a SINGLE HTML file with CSS and JS. Use Emojis for graphics. Respond ONLY with code inside ```html blocks.";
+            const systemPrompt = chatMode === 'talk' 
+                ? "You are a game consultant. DISCUSS the game, errors, and mechanics. DO NOT provide code blocks. Talk like a professional dev helper. Language: RU. Refer to the current code if needed but don't output it."
+                : `You are an expert developer. UPDATE the existing game code. 
+                   1. Respond ONLY with the UPDATED code in a \`\`\`html block.
+                   2. UNDER the code block, provide a brief 'ACTION REPORT' (Отчет о действиях) in Russian listing what you changed.
+                   3. Do not start a new project, modify the current one.
+                   CURRENT CODE: ${currentCode.substring(0, 2000)}...`;
 
-            let retries = 0;
-            const callAI = async () => {
-                try {
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${geminiKey}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: prompt }] }],
-                            systemInstruction: { parts: [{ text: systemPrompt }] }
-                        })
-                    });
+            document.getElementById('status-line').innerText = "ИИ думает...";
+            
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${geminiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: prompt }] }],
+                        systemInstruction: { parts: [{ text: systemPrompt }] }
+                    })
+                });
 
-                    if (!response.ok) throw new Error();
-
-                    const data = await response.json();
-                    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-                    const codeMatch = text.match(/```html([\s\S]*?)```/);
-                    const newCode = codeMatch ? codeMatch[1].trim() : text;
-
-                    await saveToCloud("Игра обновлена, сэр!", false, newCode);
+                const data = await response.json();
+                const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "Ошибка";
+                
+                if (chatMode === 'code') {
+                    const codeMatch = aiResponse.match(/```html([\s\S]*?)```/);
+                    const newCode = codeMatch ? codeMatch[1].trim() : currentCode;
+                    const report = aiResponse.replace(/```html([\s\S]*?)```/, "").trim();
+                    await saveToCloud(report || "Код обновлен, сэр.", false, newCode);
                     window.switchTab('preview');
-                } catch (e) {
-                    if (retries < 5) {
-                        retries++;
-                        setTimeout(callAI, Math.pow(2, retries) * 1000);
-                    } else {
-                        addMessageUI("Ошибка связи. Попробуйте еще раз.", false);
-                    }
+                } else {
+                    await saveToCloud(aiResponse, false);
                 }
-            };
-
-            callAI();
+            } catch (e) {
+                addMessageUI("Сэр, возникла заминка в матрице. Попробуйте еще раз.", false);
+            } finally {
+                document.getElementById('status-line').innerText = chatMode === 'talk' ? "Готов к общению." : "Готов кодить.";
+            }
         };
 
         window.copyCode = () => {
@@ -248,6 +259,7 @@
         window.toggleFullScreen = () => {
             const elem = document.getElementById('game-preview-container');
             if (elem.requestFullscreen) elem.requestFullscreen();
+            else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
         };
 
         initAuth();
