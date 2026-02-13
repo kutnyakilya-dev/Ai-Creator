@@ -65,9 +65,12 @@
                     <input id="prompt-input" type="text" class="w-full bg-slate-900/80 border border-slate-700 p-4 rounded-2xl outline-none text-sm focus:border-blue-500" placeholder="Командуйте, сэр...">
                     <button onclick="handleAction()" id="send-btn" class="bg-blue-600 hover:bg-blue-500 px-6 py-4 rounded-2xl font-bold transition-all shadow-lg text-xs">SEND</button>
                 </div>
-                <div id="status-line" class="text-[10px] text-slate-500 mt-3 flex items-center gap-2">
-                    <div id="mini-loader" class="gemini-loader hidden"></div>
-                    <span id="status-text">Nexus-Engine READY</span>
+                <div id="status-line" class="text-[10px] text-slate-500 mt-3 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <div id="mini-loader" class="gemini-loader hidden"></div>
+                        <span id="status-text">Nexus-Engine READY</span>
+                    </div>
+                    <button id="cancel-btn" onclick="cancelRequests()" class="hidden px-3 py-1 bg-red-900/40 text-red-400 border border-red-500/30 rounded hover:bg-red-900/60 transition-colors">ОТМЕНА</button>
                 </div>
             </div>
         </div>
@@ -94,7 +97,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, query, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // КОНФИГУРАЦИЯ FIREBASE
         const firebaseConfig = {
@@ -106,7 +109,6 @@
             appId: "1:102742166711:web:aa6b251fd6d6c993c71132"
         };
 
-        // API КЛЮЧ GEMINI
         const apiKey = "AIzaSyDdZxB-O_16W5uAbXMQ6lAtKGj3TUmS-nM"; 
         const appId = "nexus-standalone-v1";
 
@@ -117,11 +119,14 @@
         let user = null;
         let currentCode = "";
         let chatMode = 'talk';
+        let abortController = null;
+        let isCancelled = false;
 
         const showLoaders = (show) => {
             document.getElementById('global-loader').classList.toggle('hidden', !show);
             document.getElementById('mini-loader').classList.toggle('hidden', !show);
             document.getElementById('preview-loading-overlay').classList.toggle('hidden', !show);
+            document.getElementById('cancel-btn').classList.toggle('hidden', !show);
         };
 
         window.switchTab = (tab) => {
@@ -149,27 +154,44 @@
             document.getElementById('mode-code').classList.toggle('chat-mode-active', mode === 'code');
         };
 
-        const addMessageUI = (text, isUser = false) => {
+        const addMessageUI = (text, isUser = false, save = true) => {
             const chat = document.getElementById('chat-messages');
             const msg = document.createElement('div');
             msg.className = isUser ? "ml-auto bg-blue-600/90 p-3 rounded-xl max-w-[85%] text-xs shadow-lg" : "bg-slate-800 p-3 rounded-xl max-w-[85%] text-xs border border-white/5";
             msg.innerHTML = text.replace(/\n/g, '<br>');
             chat.appendChild(msg);
             chat.scrollTop = chat.scrollHeight;
+
+            if (save && user) {
+                const msgId = Date.now().toString();
+                setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'history', msgId), {
+                    text, isUser, timestamp: Date.now()
+                });
+            }
         };
 
-        const fetchWithNexusRetry = async (prompt, maxRetries = 5) => {
-            if (!apiKey) {
-                addMessageUI("Сэр, системная ошибка: API-ключ отсутствует.");
-                throw new Error("Missing API Key");
-            }
-            const systemPrompt = `Role: Nexus-Engine. Goal: Build high-performance browser games. Directives: Modular ES6+, Deep Lore, Creative Logic. Structure: Concept, Lore, Code (block \`\`\`html), 3 Ideas. Mode: ${chatMode}.`;
+        window.cancelRequests = () => {
+            isCancelled = true;
+            if (abortController) abortController.abort();
+            showLoaders(false);
+            document.getElementById('status-text').innerText = "ОПЕРАЦИЯ ПРЕРВАНА";
+        };
+
+        const fetchWithNexusRetry = async (prompt, maxRetries = 10) => {
+            isCancelled = false;
+            const systemPrompt = `Role: Nexus-Engine. Goal: Build browser games. Mode: ${chatMode}. Current project exists. Help user.`;
 
             for (let i = 0; i < maxRetries; i++) {
+                if (isCancelled) return null;
+                
+                document.getElementById('status-text').innerText = `Попытка ${i + 1}/${maxRetries}...`;
+                abortController = new AbortController();
+
                 try {
                     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
+                        signal: abortController.signal,
                         body: JSON.stringify({
                             contents: [{ parts: [{ text: prompt }] }],
                             systemInstruction: { parts: [{ text: systemPrompt }] },
@@ -178,15 +200,19 @@
                     });
 
                     if (res.status === 429) {
-                        document.getElementById('status-text').innerText = `Nexus Sync: Retry ${i+1}/${maxRetries} (15s)...`;
-                        await new Promise(r => setTimeout(r, 15000));
+                        const waitTime = i < 5 ? 5000 : 15000;
+                        document.getElementById('status-text').innerText = `Nexus Limiter: Пауза ${waitTime/1000}с (Попытка ${i+1})...`;
+                        await new Promise(r => setTimeout(r, waitTime));
                         continue;
                     }
+
                     const result = await res.json();
-                    if (!result.candidates) throw new Error("Invalid response");
+                    if (!result.candidates) throw new Error("Empty Nexus response");
                     return result;
                 } catch (e) {
+                    if (e.name === 'AbortError') return null;
                     if (i === maxRetries - 1) throw e;
+                    await new Promise(r => setTimeout(r, 2000));
                 }
             }
         };
@@ -202,54 +228,59 @@
 
             try {
                 const data = await fetchWithNexusRetry(prompt);
+                if (!data) return;
+
                 const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                
                 if (aiResponse) {
                     const codeMatch = aiResponse.match(/```html([\s\S]*?)```/);
                     if (codeMatch && chatMode === 'code') {
                         currentCode = codeMatch[1].trim();
-                        const projectDoc = doc(db, 'artifacts', appId, 'users', user.uid, 'project', 'current');
-                        await setDoc(projectDoc, { code: currentCode });
+                        await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'project', 'current'), { code: currentCode });
                         switchTab('preview');
                     }
                     addMessageUI(aiResponse.replace(/```html([\s\S]*?)```/, ""));
                 }
             } catch (e) {
-                addMessageUI("SYSTEM ERROR: NEXUS LINK FAILED. CHECK CONSOLE.");
-                console.error(e);
+                addMessageUI("КРИТИЧЕСКИЙ СБОЙ: Сэр, канал связи нестабилен.");
             } finally {
                 showLoaders(false);
                 document.getElementById('status-text').innerText = "Nexus-Engine READY";
             }
         };
 
+        const loadHistory = async (uid) => {
+            const hCol = collection(db, 'artifacts', appId, 'users', uid, 'history');
+            const q = query(hCol, orderBy('timestamp', 'asc'));
+            const snap = await getDocs(q);
+            document.getElementById('chat-messages').innerHTML = "";
+            snap.forEach(doc => {
+                addMessageUI(doc.data().text, doc.data().isUser, false);
+            });
+        };
+
         onAuthStateChanged(auth, u => {
             user = u;
             if(u) {
-                document.getElementById('auth-status').innerText = "NEXUS STANDALONE ONLINE";
-                const projectDoc = doc(db, 'artifacts', appId, 'users', u.uid, 'project', 'current');
-                onSnapshot(projectDoc, snap => {
+                document.getElementById('auth-status').innerText = "NEXUS PERSISTENCE ACTIVE";
+                loadHistory(u.uid);
+                onSnapshot(doc(db, 'artifacts', appId, 'users', u.uid, 'project', 'current'), snap => {
                     if(snap.exists()) {
                         currentCode = snap.data().code;
                         document.getElementById('code-display').textContent = currentCode;
                         document.getElementById('game-frame').srcdoc = currentCode;
                     }
-                }, err => console.error("Snapshot error:", err));
+                });
             }
         });
 
         const init = async () => {
-            try {
-                await signInAnonymously(auth);
-            } catch (e) {
-                document.getElementById('auth-status').innerText = "AUTH FAILED";
-            }
+            try { await signInAnonymously(auth); } catch (e) { }
         };
         init();
 
         window.copyCode = () => {
             navigator.clipboard.writeText(currentCode);
-            alert("Код скопирован, сэр.");
+            alert("Код артефакта скопирован, сэр.");
         };
     </script>
 </body>
