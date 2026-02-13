@@ -12,91 +12,82 @@
         .chat-mode-active { background-color: #3b82f6 !important; color: white !important; box-shadow: 0 0 15px rgba(59, 130, 246, 0.5); }
         .hidden { display: none; }
         #game-preview-container:fullscreen { background: #000; width: 100vw; height: 100vh; }
+        
+        /* Анимация в стиле Gemini */
+        .gemini-loader {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: conic-gradient(#3b82f6, #8b5cf6, #3b82f6);
+            animation: spin 1s linear infinite, glow 2s ease-in-out infinite;
+        }
+
+        .gemini-loader-large {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: conic-gradient(#3b82f6, #8b5cf6, #3b82f6);
+            animation: spin 1.5s linear infinite, glow-large 2s ease-in-out infinite;
+            filter: blur(1px);
+        }
+
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes glow { 0%, 100% { box-shadow: 0 0 5px #3b82f6; } 50% { box-shadow: 0 0 15px #8b5cf6; } }
+        @keyframes glow-large { 0%, 100% { box-shadow: 0 0 20px #3b82f6; opacity: 0.8; } 50% { box-shadow: 0 0 40px #8b5cf6; opacity: 1; } }
+
         pre { scrollbar-width: thin; scrollbar-color: #1e293b #020617; }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 10px; }
-        .status-pulse { animation: pulse 2s infinite; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
     </style>
 </head>
 <body class="flex flex-col">
-    <!-- Header -->
     <header class="p-3 glass flex justify-between items-center shrink-0 border-b border-blue-900/30">
         <div class="flex items-center gap-3">
             <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shadow-[0_0_10px_rgba(59,130,246,0.5)]">N</div>
             <div>
                 <h1 class="text-lg font-bold tracking-tight text-white">Nexus-Engine <span class="text-blue-500">ULTIMATE</span></h1>
-                <div class="flex items-center gap-2 text-[10px] text-slate-500">
-                    <span class="flex items-center gap-1"><span class="w-1.5 h-1.5 bg-blue-400 rounded-full status-pulse"></span> NEXUS CORE ACTIVATED</span>
+                <div class="flex items-center gap-2 text-[10px] text-slate-500 font-mono">
+                    <span id="auth-status" class="text-blue-400 uppercase">SYNCHRONIZING</span>
                 </div>
             </div>
         </div>
-        <div class="text-[10px] text-slate-500 text-right leading-tight font-mono">
-            ID: <span id="user-id-display">LOADING...</span><br>
-            NET: <span id="auth-status" class="text-blue-400">CONNECTING</span>
-        </div>
+        <div id="global-loader" class="gemini-loader hidden"></div>
     </header>
 
-    <!-- Tabs -->
     <nav class="flex border-b border-slate-800 glass shrink-0">
-        <button onclick="switchTab('chat')" id="tab-chat" class="flex-1 py-3 text-xs font-bold transition-all tab-active tracking-widest uppercase">Чат</button>
-        <button onclick="switchTab('code')" id="tab-code" class="flex-1 py-3 text-xs font-bold transition-all tracking-widest uppercase opacity-60">Код</button>
-        <button onclick="switchTab('preview')" id="tab-preview" class="flex-1 py-3 text-xs font-bold transition-all tracking-widest uppercase text-emerald-400 opacity-60">Превью</button>
+        <button onclick="switchTab('chat')" id="tab-chat" class="flex-1 py-3 text-xs font-bold transition-all tab-active uppercase">Чат</button>
+        <button onclick="switchTab('code')" id="tab-code" class="flex-1 py-3 text-xs font-bold transition-all opacity-60 uppercase">Код</button>
+        <button onclick="switchTab('preview')" id="tab-preview" class="flex-1 py-3 text-xs font-bold transition-all opacity-60 uppercase">Превью</button>
     </nav>
 
-    <!-- Main Content -->
     <main class="flex-grow relative overflow-hidden bg-[radial-gradient(circle_at_50%_50%,_#0f172a_0%,_#020617_100%)]">
-        
-        <!-- Tab 1: Chat -->
         <div id="content-chat" class="h-full flex flex-col">
-            <div class="flex p-2 gap-2 bg-black/20 border-b border-white/5">
-                <button onclick="setChatMode('talk')" id="mode-talk" class="flex-1 py-2 text-[10px] font-bold rounded bg-slate-800/50 text-slate-400 transition-all chat-mode-active">ОБЩЕНИЕ & АНАЛИЗ</button>
-                <button onclick="setChatMode('code')" id="mode-code" class="flex-1 py-2 text-[10px] font-bold rounded bg-slate-800/50 text-slate-400 transition-all">КОДИНГ & СБОРКА</button>
-            </div>
-
-            <div id="chat-messages" class="flex-grow overflow-y-auto p-4 space-y-4">
-                <!-- Messages -->
-            </div>
-
+            <div id="chat-messages" class="flex-grow overflow-y-auto p-4 space-y-4 font-mono"></div>
             <div class="p-4 glass-t">
-                <div class="relative group">
-                    <input id="prompt-input" type="text" 
-                        class="w-full bg-slate-900/80 border border-slate-700 p-4 pr-16 rounded-2xl outline-none text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition-all shadow-inner" 
-                        placeholder="Опишите механику для Nexus-Engine, сэр...">
-                    <button onclick="handleAction()" id="send-btn" 
-                        class="absolute right-2 top-2 bottom-2 bg-blue-600 hover:bg-blue-500 px-4 rounded-xl text-xs font-bold transition-all active:scale-95 shadow-lg">
-                        SEND
-                    </button>
+                <div class="relative flex items-center gap-3">
+                    <div class="relative flex-grow">
+                        <input id="prompt-input" type="text" class="w-full bg-slate-900/80 border border-slate-700 p-4 rounded-2xl outline-none text-sm focus:border-blue-500" placeholder="Командуйте, сэр...">
+                    </div>
+                    <button onclick="handleAction()" id="send-btn" class="bg-blue-600 hover:bg-blue-500 px-6 py-4 rounded-2xl font-bold transition-all shadow-lg text-xs">SEND</button>
                 </div>
                 <div id="status-line" class="text-[10px] text-slate-500 mt-3 flex items-center gap-2">
-                    <span id="status-dot" class="w-2 h-2 bg-blue-500 rounded-full animate-ping"></span>
-                    <span id="status-text">Nexus-Engine Core v3.1: Ожидание команд...</span>
+                    <div id="mini-loader" class="gemini-loader hidden"></div>
+                    <span id="status-text">Nexus-Engine v3.2 READY</span>
                 </div>
             </div>
         </div>
 
-        <!-- Tab 2: Code -->
-        <div id="content-code" class="h-full hidden flex flex-col p-4 bg-slate-950">
-            <div class="flex justify-between items-center mb-3">
-                <div class="flex items-center gap-2">
-                    <span class="w-2 h-2 bg-yellow-500 rounded-full"></span>
-                    <span class="text-xs font-mono text-slate-400 italic">production/index.html</span>
-                </div>
-                <button onclick="copyCode()" class="bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/30 px-4 py-1 rounded text-[10px] font-bold uppercase transition-all">Copy Artifact</button>
-            </div>
-            <pre id="code-display" class="bg-black/50 p-4 rounded-xl overflow-auto flex-grow text-[11px] font-mono text-blue-300/80 border border-white/5 whitespace-pre-wrap leading-relaxed"></pre>
+        <div id="content-code" class="h-full hidden p-4 bg-slate-950 overflow-auto">
+            <pre id="code-display" class="text-[11px] font-mono text-blue-300/80 leading-relaxed"></pre>
         </div>
 
-        <!-- Tab 3: Preview -->
         <div id="content-preview" class="h-full hidden flex flex-col p-4">
-            <div id="game-preview-container" class="relative flex-grow rounded-3xl overflow-hidden bg-[#000] border-4 border-slate-800 shadow-2xl flex items-center justify-center">
-                <div id="placeholder" class="text-slate-600 font-mono text-xs uppercase tracking-[0.2em] animate-pulse">
-                    Waiting for Nexus Deployment...
+            <div id="game-preview-container" class="relative flex-grow rounded-3xl overflow-hidden bg-[#000] border-4 border-slate-800 flex items-center justify-center">
+                <div id="preview-loading-overlay" class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-50 hidden">
+                    <div class="gemini-loader-large mb-4"></div>
+                    <div class="text-[10px] font-mono text-blue-400 animate-pulse tracking-widest">DEPLOYING NEURAL ARTIFACT...</div>
                 </div>
                 <iframe id="game-frame" class="w-full h-full hidden border-none"></iframe>
-                <button onclick="toggleFullScreen()" class="absolute top-4 right-4 bg-white/5 p-2 rounded-full hover:bg-white/10 transition-all border border-white/10">
-                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4h4m12 4V4h-4M4 16v4h4m12-4v4h-4"></path></svg>
-                </button>
             </div>
         </div>
     </main>
@@ -106,17 +97,9 @@
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyARZvFpMMn5t8pg5gb2bWA6OrZC1L8DBSA",
-            authDomain: "my-pet-c8684.firebaseapp.com",
-            projectId: "my-pet-c8684",
-            storageBucket: "my-pet-c8684.firebasestorage.app",
-            messagingSenderId: "102742166711",
-            appId: "1:102742166711:web:aa6b251fd6d6c993c71132"
-        };
-
-        const geminiKey = ""; // Оставляем пустым для использования ключа окружения
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'nexus-game-studio-v4';
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'nexus-engine-v5';
+        const apiKey = ""; 
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
@@ -124,7 +107,12 @@
         
         let user = null;
         let currentCode = "";
-        let chatMode = 'talk';
+
+        const showLoaders = (show) => {
+            document.getElementById('global-loader').classList.toggle('hidden', !show);
+            document.getElementById('mini-loader').classList.toggle('hidden', !show);
+            document.getElementById('preview-loading-overlay').classList.toggle('hidden', !show);
+        };
 
         window.switchTab = (tab) => {
             ['chat', 'code', 'preview'].forEach(t => {
@@ -137,99 +125,57 @@
             document.getElementById(`tab-${tab}`).style.opacity = "1";
         };
 
-        window.setChatMode = (mode) => {
-            chatMode = mode;
-            document.getElementById('mode-talk').classList.toggle('chat-mode-active', mode === 'talk');
-            document.getElementById('mode-code').classList.toggle('chat-mode-active', mode === 'code');
-            document.getElementById('status-text').innerText = mode === 'talk' 
-                ? `Nexus-Engine: Архитектурный анализ.` 
-                : `Nexus-Engine: Квантовая сборка кода.`;
-        };
-
         const addMessageUI = (text, isUser = false, isSystem = false) => {
             const chat = document.getElementById('chat-messages');
             const msg = document.createElement('div');
-            
-            if (isSystem) {
-                msg.className = "text-center text-[9px] text-slate-600 font-bold uppercase tracking-[0.3em] my-6 border-y border-white/5 py-1";
-                msg.innerText = text;
-            } else {
-                msg.className = isUser 
-                    ? "ml-auto bg-blue-600/90 p-4 rounded-2xl rounded-tr-none max-w-[85%] text-xs shadow-xl border border-blue-400/20" 
-                    : "bg-slate-800/80 p-4 rounded-2xl rounded-tl-none max-w-[85%] text-xs shadow-xl border border-white/5 leading-relaxed";
-                msg.innerHTML = text.replace(/\n/g, '<br>');
-            }
-            
+            msg.className = isUser ? "ml-auto bg-blue-600/90 p-3 rounded-xl max-w-[80%] text-xs" : "bg-slate-800 p-3 rounded-xl max-w-[80%] text-xs border border-white/5";
+            msg.innerHTML = text.replace(/\n/g, '<br>');
             chat.appendChild(msg);
             chat.scrollTop = chat.scrollHeight;
         };
 
-        const initAuth = async () => {
-            try {
-                await signInAnonymously(auth);
-                document.getElementById('auth-status').innerText = "ONLINE";
-                document.getElementById('auth-status').className = "text-blue-400";
-            } catch (err) {
-                document.getElementById('auth-status').innerText = "FAULT";
-            }
-        };
-
-        onAuthStateChanged(auth, (u) => {
+        onAuthStateChanged(auth, u => {
             user = u;
-            if (user) {
-                document.getElementById('user-id-display').innerText = user.uid.substring(0, 8);
-                setupSync();
+            if(u) {
+                document.getElementById('auth-status').innerText = "CORE ONLINE";
+                onSnapshot(doc(db, 'artifacts', appId, 'users', u.uid, 'project', 'current'), snap => {
+                    if(snap.exists()) {
+                        currentCode = snap.data().code;
+                        document.getElementById('code-display').textContent = currentCode;
+                        const frame = document.getElementById('game-frame');
+                        frame.srcdoc = currentCode;
+                        frame.classList.remove('hidden');
+                    }
+                });
             }
         });
 
-        const setupSync = () => {
-            onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'history', 'messages'), (snap) => {
-                if (snap.exists()) {
-                    document.getElementById('chat-messages').innerHTML = "";
-                    snap.data().list.forEach(m => addMessageUI(m.text, m.isUser, m.isSystem));
-                } else {
-                    addMessageUI("NEXUS-ENGINE INITIALIZED. READY TO BUILD.", false, true);
-                }
-            });
+        const fetchWithNexusRetry = async (prompt, maxRetries = 5) => {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const systemPrompt = `Role: Nexus-Engine. Directives: Creative, Modular ES6, Fantasy 2.0. Optimized for i5-5300U. Response: Concept, Story, Code (HTML/CSS/JS in one block), 3 Ideas. Current: ${currentCode.substring(0,2000)}`;
 
-            onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'project', 'current'), (snap) => {
-                if (snap.exists()) {
-                    currentCode = snap.data().code;
-                    document.getElementById('code-display').textContent = currentCode;
-                    const frame = document.getElementById('game-frame');
-                    const blob = new Blob([currentCode], { type: 'text/html' });
-                    frame.src = URL.createObjectURL(blob);
-                    frame.classList.remove('hidden');
-                    document.getElementById('placeholder').classList.add('hidden');
-                }
-            });
-        };
-
-        const saveToCloud = async (text, isUser, code = null, isSystem = false) => {
-            const msgRef = doc(db, 'artifacts', appId, 'users', user.uid, 'history', 'messages');
-            const snap = await getDoc(msgRef);
-            let list = snap.exists() ? snap.data().list : [];
-            list.push({ text, isUser, isSystem, time: Date.now() });
-            await setDoc(msgRef, { list });
-            if (code) {
-                await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'project', 'current'), { code, updatedAt: serverTimestamp() });
-            }
-        };
-
-        // Алгоритм экспоненциальной задержки для борьбы с ошибкой 429
-        const fetchWithRetry = async (url, options, maxRetries = 5) => {
-            let delay = 1000;
             for (let i = 0; i < maxRetries; i++) {
-                const response = await fetch(url, options);
-                if (response.status === 429) {
-                    document.getElementById('status-text').innerText = `Лимит исчерпан. Ожидание ${delay/1000}с...`;
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                    delay *= 2;
-                    continue;
+                try {
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                            systemInstruction: { parts: [{ text: systemPrompt }] },
+                            generationConfig: { temperature: 1.0, topP: 0.95, topK: 40 }
+                        })
+                    });
+
+                    if (res.status === 429) {
+                        document.getElementById('status-text').innerText = `Nexus Sync Retry ${i+1}/${maxRetries} (Waiting 15s)...`;
+                        await new Promise(r => setTimeout(r, 15000));
+                        continue;
+                    }
+                    return await res.json();
+                } catch (e) {
+                    if (i === maxRetries - 1) throw e;
                 }
-                return response;
             }
-            throw new Error('Превышено количество попыток.');
         };
 
         window.handleAction = async () => {
@@ -238,81 +184,36 @@
             if (!prompt || !user) return;
 
             input.value = "";
-            await saveToCloud(`${chatMode === 'talk' ? '💬' : '⚡'} ${prompt}`, true);
+            showLoaders(true);
+            document.getElementById('status-text').innerText = "Nexus-Engine: Generating Neural Data...";
+            addMessageUI(prompt, true);
 
-            const nexusPrompt = `
-Role: Ты — «Nexus-Engine», специализированный ИИ-архитектор для разработки браузерных игр на HTML5, CSS3 и чистом JavaScript. Твоя цель — создавать не просто код, а полноценные игровые механики с глубокой фантазией и оптимизацией под слабое железо (Intel Core i5-5300U).
-
-Core Directives:
-1. Творческая инициатива: Никогда не предлагай «стандартные» решения. Добавляй уникальные системы.
-2. Архитектурная точность: Модульный код, ES6+.
-3. Режим «Фантазия 2.0»: Богатый литературный язык, глубокий лор.
-4. Оптимизация: Для 8ГБ ОЗУ, чистый JS/Canvas.
-
-Response Structure:
-- Концепция: Яркое описание фишки.
-- Сюжет/Атмосфера: Глубокий лор.
-- Код: Единый блок \`\`\`html.
-- Инструкция по расширению: 3 идеи.
-
-${chatMode === 'talk' ? 'MODE: ОБЩЕНИЕ. Обсуждай архитектуру и идеи.' : 'MODE: КОДИНГ. Обнови текущий проект.'}
-CURRENT CODE: ${currentCode.substring(0, 3000)}...
-            `;
-
-            document.getElementById('status-text').innerText = "Nexus-Engine: Синхронизация...";
-            
             try {
-                const response = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${geminiKey}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: prompt }] }],
-                        systemInstruction: { parts: [{ text: nexusPrompt }] },
-                        generationConfig: {
-                            temperature: 1.0,
-                            topP: 0.95,
-                            topK: 40
-                        }
-                    })
-                });
-
-                const data = await response.json();
-                const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "Nexus Link Severed.";
+                const data = await fetchWithNexusRetry(prompt);
+                const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
                 
-                if (chatMode === 'code') {
+                if (aiResponse) {
                     const codeMatch = aiResponse.match(/```html([\s\S]*?)```/);
-                    const newCode = codeMatch ? codeMatch[1].trim() : currentCode;
-                    const metaData = aiResponse.replace(/```html([\s\S]*?)```/, "").trim();
-                    await saveToCloud(metaData || "Nexus Artifact Integrated.", false, newCode);
-                    window.switchTab('preview');
-                } else {
-                    await saveToCloud(aiResponse, false);
+                    if (codeMatch) {
+                        const newCode = codeMatch[1].trim();
+                        await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'project', 'current'), { code: newCode });
+                        switchTab('preview');
+                    }
+                    addMessageUI(aiResponse.replace(/```html([\s\S]*?)```/, ""));
                 }
             } catch (e) {
-                addMessageUI("Сэр, сервер перегружен. Попробуйте нажать кнопку позже.", false);
+                addMessageUI("CRITICAL ERROR: NEXUS LINK SEVERED.");
             } finally {
-                window.setChatMode(chatMode);
+                showLoaders(false);
+                document.getElementById('status-text').innerText = "Nexus-Engine READY";
             }
         };
 
-        window.copyCode = () => {
-            const text = document.getElementById('code-display').textContent;
-            const el = document.createElement('textarea');
-            el.value = text;
-            document.body.appendChild(el);
-            el.select();
-            document.execCommand('copy');
-            document.body.removeChild(el);
-            alert("Artifact Copied, Sir.");
+        const init = async () => {
+            if (typeof __initial_auth_token !== 'undefined') await signInWithCustomToken(auth, __initial_auth_token);
+            else await signInAnonymously(auth);
         };
-
-        window.toggleFullScreen = () => {
-            const elem = document.getElementById('game-preview-container');
-            if (elem.requestFullscreen) elem.requestFullscreen();
-            else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
-        };
-
-        initAuth();
+        init();
     </script>
 </body>
 </html>
