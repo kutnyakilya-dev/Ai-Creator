@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Game Studio Pro | Nexus-Engine</title>
+    <title>AI Game Studio Pro | Nexus-Engine Standalone</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #020617; color: #f8fafc; font-family: 'Segoe UI', sans-serif; height: 100vh; overflow: hidden; }
@@ -54,8 +54,6 @@
     </nav>
 
     <main class="flex-grow relative overflow-hidden bg-[radial-gradient(circle_at_50%_50%,_#0f172a_0%,_#020617_100%)]">
-        
-        <!-- ЧАТ -->
         <div id="content-chat" class="h-full flex flex-col">
             <div class="flex p-2 gap-2 bg-black/20 border-b border-white/5">
                 <button onclick="setChatMode('talk')" id="mode-talk" class="flex-1 py-2 text-[10px] font-bold rounded bg-slate-800/50 text-slate-400 chat-mode-active">ОБЩЕНИЕ</button>
@@ -74,7 +72,6 @@
             </div>
         </div>
 
-        <!-- КОД -->
         <div id="content-code" class="h-full hidden p-4 bg-slate-950 overflow-auto flex flex-col">
             <div class="flex justify-between items-center mb-2">
                 <span class="text-[10px] text-slate-500 font-mono uppercase">Current Artifact</span>
@@ -83,7 +80,6 @@
             <pre id="code-display" class="text-[11px] font-mono text-blue-300/80 leading-relaxed flex-grow"></pre>
         </div>
 
-        <!-- ПРЕВЬЮ -->
         <div id="content-preview" class="h-full hidden flex flex-col p-4">
             <div id="game-preview-container" class="relative flex-grow rounded-3xl overflow-hidden bg-[#000] border-4 border-slate-800 flex items-center justify-center">
                 <div id="preview-loading-overlay" class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-50 hidden">
@@ -98,11 +94,21 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'nexus-v5-fixed';
-        const apiKey = ""; 
+        // КОНФИГУРАЦИЯ FIREBASE
+        const firebaseConfig = {
+            apiKey: "AIzaSyARZvFpMMn5t8pg5gb2bWA6OrZC1L8DBSA",
+            authDomain: "my-pet-c8684.firebaseapp.com",
+            projectId: "my-pet-c8684",
+            storageBucket: "my-pet-c8684.firebasestorage.app",
+            messagingSenderId: "102742166711",
+            appId: "1:102742166711:web:aa6b251fd6d6c993c71132"
+        };
+
+        // API КЛЮЧ GEMINI
+        const apiKey = "AIzaSyDdZxB-O_16W5uAbXMQ6lAtKGj3TUmS-nM"; 
+        const appId = "nexus-standalone-v1";
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
@@ -120,13 +126,21 @@
 
         window.switchTab = (tab) => {
             ['chat', 'code', 'preview'].forEach(t => {
-                document.getElementById(`content-${t}`).classList.add('hidden');
-                document.getElementById(`tab-${t}`).classList.remove('tab-active');
-                document.getElementById(`tab-${t}`).style.opacity = "0.6";
+                const content = document.getElementById(`content-${t}`);
+                const tabBtn = document.getElementById(`tab-${t}`);
+                if (content) content.classList.add('hidden');
+                if (tabBtn) {
+                    tabBtn.classList.remove('tab-active');
+                    tabBtn.style.opacity = "0.6";
+                }
             });
-            document.getElementById(`content-${tab}`).classList.remove('hidden');
-            document.getElementById(`tab-${tab}`).classList.add('tab-active');
-            document.getElementById(`tab-${tab}`).style.opacity = "1";
+            const activeContent = document.getElementById(`content-${tab}`);
+            const activeTabBtn = document.getElementById(`tab-${tab}`);
+            if (activeContent) activeContent.classList.remove('hidden');
+            if (activeTabBtn) {
+                activeTabBtn.classList.add('tab-active');
+                activeTabBtn.style.opacity = "1";
+            }
         };
 
         window.setChatMode = (mode) => {
@@ -145,11 +159,11 @@
         };
 
         const fetchWithNexusRetry = async (prompt, maxRetries = 5) => {
-            const systemPrompt = `Role: Ты — «Nexus-Engine», специализированный ИИ-архитектор для разработки браузерных игр на HTML5, CSS3 и чистом JavaScript. Твоя цель — создавать полноценные игровые механики с глубокой фантазией и максимальной оптимизацией. 
-            Directives: Creative initiative, Fantasy 2.0 (Deep lore), Modular ES6+, Extreme Performance Optimization. 
-            Structure: Concept, Lore, Code (one block \`\`\`html), 3 Expansion Ideas.
-            ${chatMode === 'talk' ? 'MODE: Talk/Analysis only. No code.' : 'MODE: Production/Coding. Update project.'}
-            Current State: ${currentCode.substring(0, 1500)}`;
+            if (!apiKey) {
+                addMessageUI("Сэр, системная ошибка: API-ключ отсутствует.");
+                throw new Error("Missing API Key");
+            }
+            const systemPrompt = `Role: Nexus-Engine. Goal: Build high-performance browser games. Directives: Modular ES6+, Deep Lore, Creative Logic. Structure: Concept, Lore, Code (block \`\`\`html), 3 Ideas. Mode: ${chatMode}.`;
 
             for (let i = 0; i < maxRetries; i++) {
                 try {
@@ -159,16 +173,18 @@
                         body: JSON.stringify({
                             contents: [{ parts: [{ text: prompt }] }],
                             systemInstruction: { parts: [{ text: systemPrompt }] },
-                            generationConfig: { temperature: 1.0, topP: 0.95, topK: 40 }
+                            generationConfig: { temperature: 1.0 }
                         })
                     });
 
                     if (res.status === 429) {
-                        document.getElementById('status-text').innerText = `Retry ${i+1}/${maxRetries} (Waiting 15s)...`;
+                        document.getElementById('status-text').innerText = `Nexus Sync: Retry ${i+1}/${maxRetries} (15s)...`;
                         await new Promise(r => setTimeout(r, 15000));
                         continue;
                     }
-                    return await res.json();
+                    const result = await res.json();
+                    if (!result.candidates) throw new Error("Invalid response");
+                    return result;
                 } catch (e) {
                     if (i === maxRetries - 1) throw e;
                 }
@@ -192,13 +208,15 @@
                     const codeMatch = aiResponse.match(/```html([\s\S]*?)```/);
                     if (codeMatch && chatMode === 'code') {
                         currentCode = codeMatch[1].trim();
-                        await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'project', 'current'), { code: currentCode });
+                        const projectDoc = doc(db, 'artifacts', appId, 'users', user.uid, 'project', 'current');
+                        await setDoc(projectDoc, { code: currentCode });
                         switchTab('preview');
                     }
                     addMessageUI(aiResponse.replace(/```html([\s\S]*?)```/, ""));
                 }
             } catch (e) {
-                addMessageUI("SYSTEM ERROR: LINK FAILED.");
+                addMessageUI("SYSTEM ERROR: NEXUS LINK FAILED. CHECK CONSOLE.");
+                console.error(e);
             } finally {
                 showLoaders(false);
                 document.getElementById('status-text').innerText = "Nexus-Engine READY";
@@ -208,19 +226,24 @@
         onAuthStateChanged(auth, u => {
             user = u;
             if(u) {
-                document.getElementById('auth-status').innerText = "NEXUS ONLINE";
-                onSnapshot(doc(db, 'artifacts', appId, 'users', u.uid, 'project', 'current'), snap => {
+                document.getElementById('auth-status').innerText = "NEXUS STANDALONE ONLINE";
+                const projectDoc = doc(db, 'artifacts', appId, 'users', u.uid, 'project', 'current');
+                onSnapshot(projectDoc, snap => {
                     if(snap.exists()) {
                         currentCode = snap.data().code;
                         document.getElementById('code-display').textContent = currentCode;
                         document.getElementById('game-frame').srcdoc = currentCode;
                     }
-                });
+                }, err => console.error("Snapshot error:", err));
             }
         });
 
         const init = async () => {
-            await signInAnonymously(auth);
+            try {
+                await signInAnonymously(auth);
+            } catch (e) {
+                document.getElementById('auth-status').innerText = "AUTH FAILED";
+            }
         };
         init();
 
